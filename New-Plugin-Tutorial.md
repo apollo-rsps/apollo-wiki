@@ -9,7 +9,7 @@ IDEA by Jet Brains is a good IDE for kotlin development. To get started make sur
 When you start IDEA, you will be prompted with a screen to create, import, open, or checkout a project. We want to check out a project from GitHub. 
 Enter the URL: https://github.com/apollo-rsps/apollo.git and you can choose the rest to your liking. It will get checked out, then click to open it.
 
-The next window you will see if to import from gradle. We want to uncheck the 'Create separate module per source set' check box. Then click 'OK'.
+The next window you will see if to import from gradle. Click 'OK'.
 
 We then want to checkout the kotlin-experiments branch. To do this, use the navigation bar at the top of IDEA and click 'VCS->Git->Branches->origin/kotlin-experiments->Checkout as new branch'
 Name the new branch something along the lines of kotlin-experiments-my-plugin.
