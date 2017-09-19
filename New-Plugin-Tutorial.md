@@ -1,63 +1,51 @@
-# Getting Started with Kotlin Plugins
+# Getting Started with Plugins
 
-Note: This tutorial is for developing Plugins for the kotlin-experiments branch prior to the release of the Kotlin plugin system for Apollo. Once the system is release and made part of the master branch, I will update this Wiki page. @tlf30
+Apollo's plugins are written in [Kotlin](http://kotlinlang.org) and are primarily for content, not core code (if you aren't sure where your code should go, ask in irc). Note that this tutorial assumes some familiarity with Kotlin, although good Java knowledge will probably be enough.
 
-__First, you will need a environment to work in.__ 
+Note: This tutorial is for developing Plugins for the kotlin-experiments branch prior to the release of the Kotlin plugin system for Apollo.
 
-IDEA by Jet Brains is a good IDE for kotlin development. To get started make sure you have the JDK and then go get IDEA: https://www.jetbrains.com/idea/
+### 1. Create the working environment
 
-When you start IDEA, you will be prompted with a screen to create, import, open, or checkout a project. We want to check out a project from GitHub. 
-Enter the URL: https://github.com/apollo-rsps/apollo.git and you can choose the rest to your liking. It will get checked out, then click to open it.
+The project maintainers strongly recommend [IntelliJ IDEA](https://www.jetbrains.com/idea/).
 
-The next window you will see if to import from gradle. Click 'OK'.
+After starting IDEA, select **checkout project** with the URL: https://github.com/apollo-rsps/apollo.git and continue. Make sure to **import using gradle** on the next interface.
 
-We then want to checkout the kotlin-experiments branch. To do this, use the navigation bar at the top of IDEA and click 'VCS->Git->Branches->origin/kotlin-experiments->Checkout as new branch'
-Name the new branch something along the lines of kotlin-experiments-my-plugin.
+Next, checkout the kotlin-experiments branch. To do this via IntelliJ, use the navigation bar at the top and 'VCS > Git > Branches > origin/kotlin-experiments > Checkout as new branch'.
+Name the new branch something like kotlin-experiments-my-plugin.
 
-Now you have cloned apollo into IDEA!
+### 2. Create the plugin metadata
 
-__Second, we setup the home for our plugin.__
+Apollo's plugins are stored in **/game/plugin**, and each plugin has its own directory. Create one for your plugin - something like 'myplugin'.
 
-To write your first plugin. Navigate to /game/plugin. Here you will see plugins that are already a part of the project. 
-We want to create a directory for our plugin as well. To do this, right click on the plugins folder and click New->Directory. We will name this directory 'myplugin'
+Inside that, create a directory called 'src', then right click it and 'Mark Directory as > Sources Root'. It should turn blue.  
+Inside your plugin's directory (**not** in src) you'll want a **build.gradle** file, containing something like:
 
-Inside our directory we will want to create another directory called 'src'
-Right click our src directory and click 'Mark Directory as->Sources Root' it will turn blue.
-Also inside our directory we want to create a file named 'meta.toml'
-Inside the meta.toml we will want to add some info:
 ```
 plugin {
     name = "myplugin"
     packageName = "org.apollo.game.plugin.myplugin"
-    authors = [
-        "your name",
-    ]
-    
+    authors = [ "your name" ]
 }
 ```
 
-The 'name' field is how other plugins will find our plugin.
-The 'packageName' field is where our plugin is located when the code runs. In this case, take note that our directory name is what is at the end of the classpath.
-The 'authors' is a array of people who worked on the plugin.
-Sometimes you need to use code from another plugin. If this is the case you can use the 'dependencies' field like some
-`dependencies = [
-        "util:lookup",
-    ]`
-This imports the lookup plugin from utils.
+'packageName' is where the plugin is located when built. Note that this must be a valid Java identifier ([more info](https://docs.oracle.com/javase/tutorial/java/package/namingpkgs.html).
+Please ensure any other plugin contributors are listed as an author.
 
-Finally the config section tells the gradle build system where our plugin code will go.
+Sometimes you need to use code from another plugin, which can be done like so:
+`dependencies = [ "util:lookup" ]`
+
+This imports the `lookup` plugin from `util`.
+
+### 3. Write the plugin
+
+Plugins are written in kotlin script (*.kts*), which is then transpiled into Java (bytecode) at compile time. Kotlin script is designed to be executed like a scripting language: you do **not** need a main function (a kotlin script consisting of nothing more than `println("Hello, world!")` will indeed compile and print "Hello, world!").
+
+Apollo uses the *.plugin.kts* extension to mark files as plugin scripts.
 
 
-__Third, create the plugin!__
+Add a file named 'myplugin.plugin.kts' inside `src` and add the following code:
 
-Now we will create our plugin. To do this, we need to make a code file.
-
-Lets create a new file in our 'src' directory called 'myplugin.plugin.kts'
-The .plugin.kts part of the name tells apollo that we are a plugin code file. 
-
-Lets add some functionality to our plugin. In our 'myplugin.plugin.kts' file lets add the following code
-
-```
+```kotlin
 import org.apollo.game.action.Action
 import org.apollo.game.message.impl.InventoryItemMessage
 import org.apollo.game.model.Item
@@ -66,58 +54,48 @@ import org.apollo.game.model.entity.EntityType
 import org.apollo.game.model.entity.GroundItem
 import org.apollo.game.model.entity.Player
 
-class DropItemAction(val player: Player, val item: Int): Action<Player>(0, true, player) {
+class DropItemAction(val player: Player, val slot: Int): Action<Player>(delay = 0, immediate = true, player) {
+
     override fun execute() {
         val region = player.world.regionRepository.fromPosition(player.position)
+
         if (region.getEntities<Entity>(player.position, EntityType.DYNAMIC_OBJECT, EntityType.STATIC_OBJECT).isEmpty()) {
-            val amount = player.inventory.getAmount(item)
-            System.out.println(amount)
-            player.inventory.remove(item, amount)
-            val groundItem = GroundItem.dropped(player.world, player.position, Item(item, amount), player)
-            player.world.spawn(groundItem)
+            val amount = player.inventory.reset(slot)?.amount
+            if (amount == null) {
+                return
+            }
+
+            val item = GroundItem.create(player.world, player.position, Item(item, amount), player)
+            player.world.spawn(item)
         } else {
             player.sendMessage("You cannot drop this here.")
         }
+
         stop()
     }
 
 }
 
-on {InventoryItemMessage::class}
-        .where {option == 5 && interfaceId == 3214}
-        .then {
-            it.startAction(DropItemAction(it, id))
-            terminate()
-        }
+val DROP_OPTION_ID = 5
+val INVENTORY_INTERFACE_ID = 3214
+
+on { InventoryItemMessage::class }
+    .where { option == DROP_OPTION_ID && interfaceId == INVENTORY_INTERFACE_ID }
+    .then { player ->
+        player.startAction(DropItemAction(player, slot))
+        terminate()
+    }
 ```
 
+Here we have an **action**, and a **listener**, the two core features of plugins.
 
-So, this is a lot at first, but lets break it down so it is simple.
+The `on {...}` lambda at the end is the listener, and listens for specific event types (typically a **Message** subclass)
+Here we are listening to `InventoryItemMessage`s, which are called whenever a player performs an action on an item in an inventory.  
+The `where` clause is used to filter out requests that don't match what we're looking for: here, we only care about messages where the player selected the fifth option (used for dropping), and when they selected that option on an item in the inventory (i.e. the interfaceId matches the inventory interface id). `where` is executed from the context of the intercepted message, so `option` and `interfaceId` are actually fields inside `InventoryItemMessage`.  
+The 'then' clause is executed if the `where` lambda evaluates to `true`.
 
-The first thing is the `on {...}` lambda function at the end. This is how we catch events 
-Here we are catching the InventoryItemMessage, this is called when ever the player performs an action on an item in an inventory. 
-The 'where' clause allows us to filter out requests we do not care about. In our where clause, we are filtering out any option that is not option 5 and any interface that is not 3214.
-Option 5 is the drop button when the user right clicks an item. Interface 3214 is the user's inventory.
+**Actions** are used to schedule player (or NPC)-related code to be executed in the future (and optionally, periodically). Plugins also have actions that can be used to suspend/asynchronously execute code. Here we're creating an `Action` that removes an item from the player's inventory and spawns a `GroundItem`. Because `Action`s are scheduled, `execute()` will be called every server pulse (tick), until the `stop()` function is called. 
 
-The 'then' clause is where we put out code that we want to run when the message is the one we want.
+Now you can build it by running `gradle build` in the command line, or in IntelliJ via 'View > Tool Windows > Gradle > Execute Gradle Task' (type 'build' for the command).
 
-In this code block, the `it` variable is the player object that called the message. We are telling the player to run an action. After, we tell the server we are done with the message by terminating it. 
-
-The DropItemAction class is where we put our action. This class extends the Action class with the player type to indicate that a player is running the action. When we initialize the action, `0` is how many server ticks to delay the action by. The `true` is if the action should ignore the delay and run immediately.
-
-In the action we override the execute function. This is where the logic of the action occurs. This function will get run every tick until the `stop()` function is called. 
-
-In our execute function, we put in the logic to drop items. 
-Important functions to note here: 
-`player.sendMessage(...)` displays a message in the players chat box from the server
-`player.world.spawn(...)` Spawns an entity into the world
-
-Important objects to note here:
-`player.inventory` is the players inventory
-`player.world` is a good way to access the world that the player is in
-The `region` is a object that stores what is going on in that part of the map. The world consists of many regions. This allows for easier management of the information in the world. 
-
-Now you can build it by running a gradle build. To open gradle. go to View->Tool Windows->Gradle
-Then click Execute Gradle Task. Type 'run' into the command. 
-
-You are now running your first plugin!
+Voila!
